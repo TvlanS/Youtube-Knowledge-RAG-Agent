@@ -78,7 +78,7 @@ Built with **CrewAI** for agent orchestration, **DeepSeek** as the LLM, **Chroma
 ### 1. Clone the repository
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/TvlanS/Youtube-Knowledge-RAG-Agent
 cd agent_youtube_knowledge_rag_2.0
 ```
 
