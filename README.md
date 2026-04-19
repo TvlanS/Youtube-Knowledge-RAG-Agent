@@ -28,7 +28,7 @@ Built with **CrewAI** for agent orchestration, **DeepSeek** as the LLM, **Chroma
 <div align="center">
   <img src="https://github.com/TvlanS/Youtube-Knowledge-RAG-Agent/blob/9bacbf7922c3dbb327857ae1275a7dd8d6b8228e/img/RAG_Query_Output.png" alt="Gradio Sample UI" width="600">
   <br>
-  <em>Figure 3: Rag Querying Output.</em>
+  <em>Figure 4: Rag Querying Output.</em>
 </div>
 
 ---
