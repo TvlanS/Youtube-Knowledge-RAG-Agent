@@ -1,4 +1,4 @@
-# Youtube Knowledge RAG
+# Youtube Knowledge RAG Agent
 
 A multi-agent AI system that searches YouTube for videos on any topic, transcribes them into chapter-aware documents, embeds them into a hybrid vector database, and answers questions using retrieval-augmented generation (RAG).
 
