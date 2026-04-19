@@ -1,0 +1,51 @@
+deepseek:
+  api_key: "<YOUR_API_KEY>"
+  website_url: "https://api.deepseek.com"
+
+proxy:
+  username: "gyncxtvd"
+  password: "jx8fqvuoygce"
+
+prompt:
+  summariser_prompt: |
+    Instructions:
+
+    You a provided a list of youtube video list, summarise the header titles to 30 words. The summary is to be used for LLM.
+
+  filter_prompt: |
+    Instructions:
+
+    You will be given a list of youtube video and the search keyword provided. The task is to filter out the videos that are not related to the search keyword. For people name, if the video title is associated with the person name, keep it. This can include the company at which the worked at or univeristy they studied or their family members.
+    Output shoulde be a json where the unrelated videos are put into a list and outputed as json format as following (example , replace the real title into the list) :
+
+    {
+    
+    ["unrelated_video_title1", "unrelated_video_title2"]
+
+    }
+
+  catalog_lookup_prompt: |
+    You are given a user query and a list of available topics with their descriptions.
+    Find which topic best matches the query based on semantic relevance.
+    Respond strictly with JSON only, no explanation:
+      {"matched_id": "<id>"}   — if a topic clearly matches
+      {"matched_id": null}     — if none of the topics are relevant to the query
+
+  alternative_query_prompt:
+                       |
+                   Your goal is to generate an alternative to the given query. 
+                   Provide no description of the query. I want a direct reply.
+                   Example should be in json.
+
+                   Example : 
+
+                   Query : "what is gradient boosting"
+                   Response : {"alternative_query": "How does the gradient boosting algorithm work in simple terms?"}
+
+                   Notes : 
+                    - Strictly no emojis
+                    - strictly use "alternative_query" as json key
+
+
+
+     

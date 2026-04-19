@@ -1,0 +1,27 @@
+ qa_task:
+    description: >
+      The user said: {question}
+      FIRST decide: is the user asking a question or querying existing knowledge?
+      If NO (e.g. they just asked to get/collect/download a video) — immediately respond
+      with "No query needed." and stop. Do NOT call any tools.
+      If YES — call catalog_lookup to find the topic id, then call rag_query with that id.
+      Using the retrieved context, write a clear and concise answer with citations.
+    expected_output: >
+      Either "No query needed." if this was not a knowledge query, or a well-summarised
+      answer with citations based on retrieved context. If no matching topic is found,
+      report that the topic has not been ingested yet.
+    agent: qa
+
+ ingestion_task:
+    description: >
+      The user said: {question}
+      FIRST decide: is the user asking to gather, collect, download, or get a video from YouTube?
+      If NO (e.g. they are asking a question about existing content) — immediately respond
+      with "No ingestion needed." and stop. Do NOT call any tools.
+      If YES — pass the topic to the ingestion tool with the number of videos if specified.
+      If the user says "a" (singular) video from a specific person, set max_videos to 1.
+      Report back when done.
+    expected_output: >
+      Either "No ingestion needed." if this was not a collection request, or confirmation
+      that the ingestion pipeline completed successfully.
+    agent: ingestion

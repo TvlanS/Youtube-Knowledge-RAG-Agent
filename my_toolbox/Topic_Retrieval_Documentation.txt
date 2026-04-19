@@ -1,0 +1,232 @@
+Topic Retrieval System
+======================
+Purpose: Explains how an agent maps a user question to the correct RAG store
+without scanning the full catalog on every query.
+
+
+---
+
+## The Problem
+
+RAGQueryTool.run(query, topic_slug) requires the caller to already know
+which topic_slug to use. Without a routing layer, an agent must either
+be told the topic explicitly or scan the full video_catalog.json on
+every query — including repeated questions on the same topic in a
+chained conversation.
+
+
+---
+
+## Overview
+
+Topic retrieval is a two-tier lookup that runs before every RAG query:
+
+    Tier 1 — recent_topics.json   (max 3 entries, checked first)
+    Tier 2 — video_catalog.json   (full catalog, checked on Tier 1 miss)
+
+The agent calls CatalogLookupTool with the user's raw question.
+The tool returns the matching catalog id, which is then passed directly
+to RAGQueryTool. The agent never scans files manually.
+
+
+---
+
+## Lookup Flow
+
+    User question
+         |
+         v
+    CatalogLookupTool.run(query)
+         |
+         |-- read recent_topics.json (up to 3 entries)
+         |       |
+         |       |-- LLM match found?  -->  return { id, source: "recent" }
+         |       |
+         |       └-- no match
+         |
+         |-- read video_catalog.json (all entries)
+         |       |
+         |       |-- LLM match found?  -->  return { id, source: "catalog" }
+         |       |
+         |       └-- no match  -->  return error (no relevant topic exists)
+         |
+         v
+    RAGQueryTool.run(query, id)
+         |
+         |-- is_ready(id)?  -->  query directly from memory
+         |
+         └-- not ready  -->  reload from data/rag/{id}/ then query
+
+
+---
+
+## CatalogLookupTool
+
+File:    tools/catalog_lookup_tool.py
+Class:   CatalogLookupTool
+
+Method:
+    run(query: str) -> dict
+
+    Input:   raw user question string
+    Output:  { "status": "success", "id": "<catalog_id>", "source": "recent" | "catalog" }
+             { "status": "error",   "message": "<reason>" }
+
+LLM matching:
+    Both tiers use the same LLM call (deepseek-chat).
+    The prompt is catalog_lookup_prompt in llm_config.yml.
+    The LLM is given the query and a list of { id, description } pairs.
+    It responds strictly with JSON:
+        { "matched_id": "<id>" }   — clear semantic match found
+        { "matched_id": null }     — no relevant topic in the provided list
+
+    A null from Tier 1 causes fallthrough to Tier 2.
+    A null from Tier 2 returns an error to the agent.
+
+Config keys used:
+    deepseek.api_key
+    deepseek.website_url
+    prompt.catalog_lookup_prompt
+
+
+---
+
+## recent_topics.json
+
+File:    data/recent_topics.json
+Format:  JSON array, max 3 entries, ordered newest-first
+
+Example:
+    [
+      { "id": "jensen_huang_20260418_014035",    "description": "..." },
+      { "id": "crew_ai_tutorial_20260417_083126", "description": "..." },
+      { "id": "nvidia_chips_20260416_112200",     "description": "..." }
+    ]
+
+Written by:
+    rag_state.update_state() — called automatically every time a RAG
+    store is loaded into memory (by RAGEmbedTool or RAGQueryTool).
+
+Write logic (in rag_state._persist_recent):
+    1. Look up the description for topic_slug from video_catalog.json
+    2. If not found in catalog, skip (topic has no catalog entry)
+    3. Load existing recent_topics.json, or start with empty list
+    4. Remove any existing entry with the same id (deduplication)
+    5. Prepend new entry
+    6. Truncate to 3 entries
+    7. Write back to disk
+
+Persistence:
+    The file survives process restarts. It is never explicitly cleared.
+    Entries naturally age out as newer topics push them beyond position 3.
+    Stale entries (topics whose RAG store was deleted) are harmless —
+    a miss at is_ready() will attempt a disk reload, and if absent,
+    RAGQueryTool returns an error.
+
+When it is empty or missing:
+    CatalogLookupTool skips Tier 1 silently and goes straight to
+    video_catalog.json. No error is raised.
+
+
+---
+
+## video_catalog.json
+
+File:    data/video_catalog.json
+Format:  JSON array, one entry per search session, no size limit
+
+Example:
+    [
+      { "id": "jensen_huang_20260418_014035",    "description": "Summary of Jensen Huang videos: Nvidia competitive edge, AI chip sales, GTC 2026 keynote..." },
+      { "id": "crew_ai_tutorial_20260417_083126", "description": "Summary of CrewAI tutorial videos: multi-agent orchestration, task delegation, LLM pipelines..." }
+    ]
+
+Written by:
+    YouTubeSearchTool._update_catalog() — called at the end of every
+    run() after both original and filtered result files are saved.
+
+The id field:
+    Identical to the filename stem of the search result JSONs.
+    e.g. the file jensen_huang_20260418_014035.json has id "jensen_huang_20260418_014035".
+    This same id is embedded in both the original and filtered JSON files
+    and is used as the RAG store key in data/rag/{id}/.
+
+The description field:
+    The LLM-generated summary of all video titles from that search session.
+    Written by YouTubeSearchTool._get_llm_description().
+    This is what the LLM reads during catalog lookup to assess relevance.
+
+Deduplication:
+    If the same id is written twice (e.g. a re-run), the existing entry
+    is removed before the new one is appended. IDs are unique per search
+    session by timestamp so this is an edge case.
+
+
+---
+
+## How the id Flows Through the Pipeline
+
+    YouTubeSearchTool.run()
+        generates:  id = "{topic_slug}_{timestamp}"
+        writes id into:  original_search_results/{id}.json
+                         filtered_search_results/{id}.json
+                         video_catalog.json
+
+    YouTubeTranscriberTool.run()
+        reads topic_slug from filtered JSON
+        creates transcript folder: data/transcripts/{topic_slug}_{run_dt}/
+
+    main_pipeline.py
+        reads id from filtered JSON
+        passes catalog_id=id to RAGEmbedTool.run()
+
+    RAGEmbedTool.run(folder_path, catalog_id)
+        uses catalog_id as the RAG store key (not the folder name)
+        creates: data/rag/{id}/chroma_db/
+                 data/rag/{id}/parent_chunks.pkl
+        calls update_state(id, ...) which writes recent_topics.json
+
+    CatalogLookupTool.run(query)
+        returns id
+
+    RAGQueryTool.run(query, id)
+        loads from data/rag/{id}/ if not already in memory
+
+
+---
+
+## Agent Usage Pattern (CrewAI or similar)
+
+    Step 1 — Lookup
+        result = CatalogLookupTool().run(user_query)
+        if result["status"] == "error":
+            # no relevant topic — inform user or trigger a new search
+        topic_id = result["id"]
+
+    Step 2 — Query
+        answer = RAGQueryTool().run(user_query, topic_id, k=10)
+
+    For chained queries on the same topic:
+        Step 1 will hit recent_topics.json (source: "recent")
+        Step 2 will hit is_ready() in memory
+        No LLM catalog call, no disk reload — fastest possible path.
+
+
+---
+
+## Performance Characteristics
+
+    Cold start, topic in recent_topics.json:
+        1 LLM call (small list) + disk reload of chroma_db + pkl
+
+    Cold start, topic not in recent_topics.json:
+        2 LLM calls (recent miss + catalog scan) + disk reload
+
+    Warm (already in memory), topic in recent_topics.json:
+        1 LLM call (small list) — no disk I/O
+
+    Warm (already in memory), topic not in recent_topics.json:
+        2 LLM calls — no disk I/O
+
+    Subsequent queries in same session on same topic:
+        Same as warm paths above — rag_state keeps the store loaded.

@@ -1,0 +1,10 @@
+# Core dependencies
+yt-dlp==2025.10.14
+youtube-transcript-api==1.2.2
+reportlab==4.4.4
+pyprojroot==0.3.0
+
+# Optional dependencies for future Gradio UI
+# gradio>=5.0.0
+
+# Python version: 3.8+

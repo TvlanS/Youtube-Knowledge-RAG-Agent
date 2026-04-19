@@ -1,0 +1,258 @@
+Data storage framework :
+
+data/
+├── video_catalog.json
+├── recent_topics.json
+│
+├── original_search_results/
+│   ├── crewai_tutorial_20260416_100000.json
+│   └── machine_learning_20260416_110000.json
+│
+├── filtered_search_results/
+│   ├── crewai_tutorial_20260416_100000.json
+│   └── machine_learning_20260416_110000.json
+│
+├── transcripts/
+│   ├── crewai_tutorial_20260416_100000/
+│   │   ├── CrewAI_Full_Course/
+│   │   │   ├── transcript.json
+│   │   │   └── transcript.pdf
+│   │   └── CrewAI_Crash_Course/
+│   │       ├── transcript.json
+│   │       └── transcript.pdf
+│   └── machine_learning_20260416_110000/
+│       └── ML_Explained/
+│           ├── transcript.json
+│           └── transcript.pdf
+│
+└── rag/
+    ├── crewai_tutorial_20260416_100000/
+    │   ├── chroma_db/
+    │   └── parent_chunks.pkl
+    └── machine_learning_20260416_110000/
+        ├── chroma_db/
+        └── parent_chunks.pkl
+
+
+
+# Data Folder Descriptions
+# Purpose: Explains what each folder and file in the data/ directory contains
+# and why it exists. Used as context for LLM tools and agents.
+
+---
+
+## data/
+The root data folder for the entire pipeline.
+Contains all outputs from every stage of the pipeline — search, transcription, and RAG storage.
+Nothing in this folder is source code. Everything here is generated at runtime.
+
+---
+
+## data/video_catalog.json
+A persistent index of every search session that has been run.
+Written and maintained by YouTubeSearchTool at the end of every run().
+
+Each entry represents one search session and contains:
+- id:          the catalog identifier — identical to the filename stem of the
+               corresponding search result JSONs and the RAG store folder name
+               e.g. "crewai_tutorial_20260416_100000"
+- description: LLM-generated summary of all video titles scraped in that session
+
+This file is the authoritative source of truth for which topics exist in the
+system. CatalogLookupTool reads it when recent_topics.json does not contain
+a match for the user's query.
+
+Format: JSON array, one entry per search session, no size limit.
+If the same id is written twice, the old entry is replaced — no duplicates.
+
+---
+
+## data/recent_topics.json
+A small persistent cache of the last 3 topics that were loaded into the RAG
+system. Written automatically by rag_state.update_state() whenever a RAG
+store is loaded into memory.
+
+Each entry mirrors the video_catalog.json structure:
+- id:          catalog id of the loaded topic
+- description: the same LLM description from video_catalog.json
+
+Ordered newest-first. Capped at 3 entries — when a 4th topic loads, the
+oldest entry is dropped.
+
+CatalogLookupTool checks this file before video_catalog.json because it is
+smaller (max 3 entries vs unbounded). For chained queries on recently used
+topics this means only one small LLM call instead of a full catalog scan.
+
+Survives process restarts. Never explicitly cleared — entries age out
+naturally as newer topics are loaded.
+
+---
+
+## data/original_search_results/
+Contains the raw, unfiltered JSON file for every search query submitted by the user.
+Each file is the direct output of the YouTubeSearchTool before LLM filtering is applied.
+
+A new file is created every time the user runs a search on a topic.
+If the same topic is searched twice, two files will exist with different timestamps.
+
+The filename format is:
+    {topic_slug}_{YYYYMMDD_HHMMSS}.json
+    e.g. crewai_tutorial_20260416_100000.json
+
+---
+
+## data/original_search_results/{topic_slug}_{timestamp}.json
+The full unfiltered result for one search session.
+
+Contains:
+- id:          the catalog id for this session — same as the filename stem
+               and the key used in video_catalog.json, recent_topics.json,
+               and data/rag/{id}/
+- description: LLM-generated summary of all scraped video titles
+- topic:       the original search string the user submitted
+- topic_slug:  sanitised version of the topic used for folder naming
+- searched_at: datetime the search was run
+- total:       number of videos in this file
+- videos:      list of scraped videos, each with:
+    - title:           video title
+    - url:             full YouTube URL
+    - transcribed:     false until YouTubeTranscriberTool processes this video
+    - transcript_path: null until transcription is done, then filled with the path
+    - embedded:        false until RAGEmbedTool processes this video
+
+This file is kept as an audit record of everything scraped before filtering.
+
+---
+
+## data/filtered_search_results/
+Contains one JSON file per search query after irrelevant videos have been removed.
+Each file shares the same filename as its counterpart in original_search_results.
+
+The LLM filter compares each video title against the search keyword and drops
+titles it considers unrelated. Only this filtered file is passed to the
+YouTubeTranscriberTool for transcription.
+
+---
+
+## data/filtered_search_results/{topic_slug}_{timestamp}.json
+The filtered result for one search session. Same structure as the original
+(including the id field) but with irrelevant videos removed and the total
+count updated to reflect what remains.
+
+This is the handoff point between the search and transcription stages.
+YouTubeTranscriberTool reads from here, not from original_search_results.
+main_pipeline.py reads the id field from this file to pass catalog_id
+to RAGEmbedTool, which uses it as the RAG store folder name.
+
+---
+
+## data/transcripts/
+Contains all video transcripts organised by topic.
+Each topic gets its own subfolder named after its topic_slug.
+
+---
+
+## data/transcripts/{topic_slug}/
+All transcripts belonging to one search topic.
+For example, data/transcripts/crewai_tutorial/ contains every video
+that was transcribed under the topic "crewai tutorial".
+
+The folder name is always the sanitised topic_slug, never the raw user input.
+
+---
+
+## data/transcripts/{topic_slug}/{video_title}/
+One folder per transcribed video, named after the video title (sanitised).
+For example: data/transcripts/crewai_tutorial/CrewAI_Full_Course/
+
+Contains exactly two files:
+    transcript.json   — used by the pipeline (RAGEmbedTool reads this)
+    transcript.pdf    — human-readable version only, pipeline ignores it
+
+---
+
+## data/transcripts/{topic_slug}/{video_title}/transcript.json
+The structured transcript for one video. This is the main output of the
+YouTubeTranscriberTool and the main input to RAGEmbedTool.
+
+Contains:
+- title_name: the video title
+- topic_slug: which topic this video belongs to
+- source_url: the original YouTube URL
+- transcribed_at: datetime the transcription was run
+- has_chapters: true if the video had chapter markers, false if it is a flat transcript
+- chapters: list of chapter objects, each containing:
+    - chapter_number: position in the video
+    - chapter_title: name of the chapter
+    - timeline: timestamp in minutes (null if has_chapters is false)
+    - chapter_text: the full spoken text for this chapter
+
+If has_chapters is false, the chapters list still exists but contains
+a single entry with the complete transcript and timeline set to null.
+
+This file is what gets converted to text and embedded into ChromaDB.
+
+---
+
+## data/transcripts/{topic_slug}/{video_title}/transcript.pdf
+A formatted, human-readable version of the transcript.
+Generated by the original YT_Pipeline alongside the JSON.
+The pipeline does not read this file at any point after it is created.
+It exists purely for the user to read offline.
+
+---
+
+## data/rag/
+Contains one isolated RAG store per topic.
+Each topic has its own ChromaDB and parent chunks so that querying
+one topic never returns results from another topic.
+
+---
+
+## data/rag/{id}/
+The complete RAG store for one search session, keyed by catalog id.
+For example: data/rag/crewai_tutorial_20260416_100000/
+
+The folder name is the catalog id (not just the topic_slug) so that
+multiple search sessions on the same topic each have their own isolated
+store. RAGEmbedTool receives the id via the catalog_id parameter from
+main_pipeline.py and uses it as the folder key.
+
+Contains all embedded knowledge from every video transcribed under this session.
+The RAGQueryTool always loads from this folder when the user asks about this topic.
+
+When the Indexer agent embeds a new video, it adds to the existing store
+rather than replacing it. This means the store grows as more videos are transcribed.
+
+---
+
+## data/rag/{id}/chroma_db/
+The ChromaDB vector database for this topic.
+Managed automatically by ChromaDB — do not manually edit or delete files inside.
+
+Contains the child chunks (small text segments) of all transcripts for this topic,
+stored as vector embeddings using the sentence-transformers/all-MiniLM-L6-v2 model.
+
+Used by the RAGQueryTool's vector similarity search component of the hybrid retriever.
+The collection inside ChromaDB is always named after the topic_slug.
+
+This folder persists across sessions. If the process restarts, ChromaDB
+reloads from this folder automatically.
+
+---
+
+## data/rag/{id}/parent_chunks.pkl
+A Python pickle file containing the parent chunks for this topic.
+Parent chunks are larger text segments (3000 tokens) used to provide
+fuller context once the child chunks identify the relevant section.
+
+This file is created and updated by RAGEmbedTool.
+It is read by RAGQueryTool at query time.
+
+Why pickle and not ChromaDB? ChromaDB only stores the child chunks used for
+retrieval. The parent chunks are kept separately because they are used purely
+for context assembly after retrieval, not for the search itself.
+
+If this file does not exist, RAGQueryTool cannot return context and will
+return an error asking the user to run ingestion first.
+
