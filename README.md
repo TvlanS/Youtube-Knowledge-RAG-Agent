@@ -5,6 +5,45 @@ A multi-agent AI system that searches YouTube for videos on any topic, transcrib
 Built with **CrewAI** for agent orchestration, **DeepSeek** as the LLM, **ChromaDB + BM25** for hybrid retrieval, and **Selenium + yt-dlp** for YouTube data collection.
 
 ---
+## Agent Sample
+
+<div align="center">
+  <img src="https://github.com/TvlanS/Youtube-Knowledge-RAG-Agent/blob/9bacbf7922c3dbb327857ae1275a7dd8d6b8228e/img/Video_Search.png" alt="Gradio Sample UI" width="600">
+  <br>
+  <em>Figure 1: Video Search.</em>
+</div>
+<br>
+<div align="center">
+  <img src="https://github.com/TvlanS/Youtube-Knowledge-RAG-Agent/blob/9bacbf7922c3dbb327857ae1275a7dd8d6b8228e/img/Video_Search_Agent_Execution.png" alt="Gradio Sample UI" width="600">
+  <br>
+  <em>Figure 2: Ingestion Agent Execution.</em>
+</div>
+<br>
+<div align="center">
+  <img src="https://github.com/TvlanS/Youtube-Knowledge-RAG-Agent/blob/9bacbf7922c3dbb327857ae1275a7dd8d6b8228e/img/RAG_Query.png" alt="Gradio Sample UI" width="600">
+  <br>
+  <em>Figure 3: Rag Querying.</em>
+</div>
+<br>
+<div align="center">
+  <img src="https://github.com/TvlanS/Youtube-Knowledge-RAG-Agent/blob/9bacbf7922c3dbb327857ae1275a7dd8d6b8228e/img/RAG_Query_Output.png" alt="Gradio Sample UI" width="600">
+  <br>
+  <em>Figure 3: Rag Querying Output.</em>
+</div>
+
+---
+
+## Architecture Overview
+
+<div align="center">
+  <img src="https://github.com/TvlanS/Youtube-Knowledge-RAG-Agent/blob/9bacbf7922c3dbb327857ae1275a7dd8d6b8228e/img/Agent_Pipeline.png" alt="Gradio Sample UI" width="800">
+  <br>
+  <em>Figure 3: Rag Querying Output.</em>
+</div>
+
+---
+
+
 
 ## Agent Summary
 
@@ -25,72 +64,6 @@ Built with **CrewAI** for agent orchestration, **DeepSeek** as the LLM, **Chroma
 | `CatalogListTool` | `tools/custom_tool.py` | Returns list of all ingested topics from `data/video_catalog.json` |
 | `CatalogTool` | `tools/custom_tool.py` | LLM semantic matching to find the right topic slug for a user query |
 | `RAGQueryTool` | `my_toolbox/tools/rag_query_tool.py` | Ensemble retrieval (Chroma + BM25) with LLM-generated alt-query and parent-chunk re-ranking |
-
----
-
-## Architecture Overview
-
-```
-User Input (CLI)
-    │
-    ▼
-CrewAI Manager Agent
-    ├── Ingestion Agent  (search / collect / get)
-    │       ├── YouTubeSearchTool    → scrape & filter YouTube results
-    │       ├── YouTubeTranscriberTool → subtitles + chapters → PDF/JSON
-    │       └── RAGEmbedTool         → Chroma + BM25 vector store
-    │
-    └── QA Agent  (question / ask / explain)
-            ├── CatalogListTool  → list available topics
-            ├── CatalogTool      → match query to topic slug
-            └── RAGQueryTool     → hybrid retrieve + re-rank → answer
-```
-
----
-
-## Project Structure
-
-```
-agent_youtube_knowledge_rag_2.0/
-├── src/
-│   └── agent_youtube_knowledge_rag/
-│       ├── main.py               # CLI entry point
-│       ├── crew.py               # CrewAI agent & task definitions
-│       ├── config/
-│       │   ├── agents.yaml       # Agent role/goal/backstory config
-│       │   └── tasks.yaml        # Task descriptions
-│       └── tools/
-│           └── custom_tool.py    # CrewAI-wrapped tool classes
-├── my_toolbox/
-│   ├── config/
-│   │   └── llm_config.yml        # API keys, base URL, prompts
-│   ├── tools/
-│   │   ├── Ingestion_pipeline.py
-│   │   ├── youtube_search_tool.py
-│   │   ├── youtube_transcriber_tool.py
-│   │   ├── rag_embed_tool.py
-│   │   ├── rag_query_tool.py
-│   │   ├── rag_state.py
-│   │   └── catalog_lookup_tool.py
-│   └── utils/
-│       ├── config_setup.py
-│       ├── LLM_load.py
-│       ├── metadata_extract.py
-│       ├── subtitle_extract.py
-│       ├── sub_sorter.py
-│       └── rankingV2.py
-├── data/                         # Runtime data (auto-created)
-│   ├── original_search_results/
-│   ├── filtered_search_results/
-│   ├── transcripts/
-│   ├── rag/                      # Chroma vector stores per topic
-│   ├── video_catalog.json
-│   └── recent_topics.json
-├── knowledge/
-│   └── user_preference.txt
-├── requirements.txt
-└── README.md
-```
 
 ---
 
