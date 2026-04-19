@@ -5,7 +5,7 @@ A multi-agent AI system that searches YouTube for videos on any topic, transcrib
 Built with **CrewAI** for agent orchestration, **DeepSeek** as the LLM, **ChromaDB + BM25** for hybrid retrieval, and **Selenium + yt-dlp** for YouTube data collection.
 
 ---
-## Agent Sample
+## Agent Preview
 
 <div align="center">
   <img src="https://github.com/TvlanS/Youtube-Knowledge-RAG-Agent/blob/9bacbf7922c3dbb327857ae1275a7dd8d6b8228e/img/Video_Search.png" alt="Gradio Sample UI" width="600">
